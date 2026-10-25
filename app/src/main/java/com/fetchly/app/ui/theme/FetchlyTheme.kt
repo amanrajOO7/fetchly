@@ -24,5 +24,5 @@ fun FetchlyTheme(content: @Composable () -> Unit) {
         dark -> darkColorScheme()
         else -> lightColorScheme()
     }
-    MaterialTheme(colorScheme = colors, content = content)
+    MaterialTheme(colorScheme = colors, typography = FetchlyTypography, content = content)
 }
