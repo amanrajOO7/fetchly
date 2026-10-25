@@ -3,6 +3,10 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+// Release signing is enabled only when CI (or you) provides a keystore path.
+// Without it, the release build is unsigned and can't be installed directly.
+val releaseKeystorePath: String? = System.getenv("KEYSTORE_PATH")?.takeIf { it.isNotBlank() }
+
 android {
     namespace = "com.fetchly.app"
     compileSdk = 35
@@ -15,8 +19,22 @@ android {
         versionName = "0.1.0"
     }
 
+    if (releaseKeystorePath != null) {
+        signingConfigs {
+            create("release") {
+                storeFile = file(releaseKeystorePath)
+                storePassword = System.getenv("KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("KEY_ALIAS")
+                keyPassword = System.getenv("KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
+            if (releaseKeystorePath != null) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
