@@ -19,15 +19,28 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Android
+import androidx.compose.material.icons.filled.Apps
+import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ClosedCaption
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.HelpOutline
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Schedule
@@ -35,29 +48,37 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.ScrollableTabRow
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -73,7 +94,11 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.fetchly.app.data.DownloadEntity
 import com.fetchly.app.data.DownloadStatus
+import com.fetchly.app.data.FileCategory
+import com.fetchly.app.data.SettingsStore
+import com.fetchly.app.data.categoryOf
 import kotlin.math.roundToInt
+import kotlinx.coroutines.launch
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
 /** The filter tabs under the app bar. Each tab says which statuses it shows. */
@@ -90,114 +115,285 @@ fun FetchlyScreen(viewModel: DownloadsViewModel = viewModel()) {
     val state by viewModel.state.collectAsState()
     var showAddSheet by rememberSaveable { mutableStateOf(false) }
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
+    var selectedCategoryOrdinal by rememberSaveable { mutableIntStateOf(0) }
     var searching by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
+    val coroutineScope = rememberCoroutineScope()
 
     RequestNotificationPermission()
 
     val tabs = DownloadTab.entries
+    val selectedCategory = FileCategory.entries[selectedCategoryOrdinal]
     val counts = tabs.map { tab -> state.downloads.count { tab.matches(it.status) } }
+    val categoryCounts = FileCategory.entries.associateWith { category ->
+        if (category == FileCategory.EVERYTHING) {
+            state.downloads.size
+        } else {
+            state.downloads.count { categoryOf(it.fileName) == category }
+        }
+    }
     val visible = state.downloads.filter { download ->
         tabs[selectedTab].matches(download.status) &&
+            (selectedCategory == FileCategory.EVERYTHING || categoryOf(download.fileName) == selectedCategory) &&
             (query.isBlank() || download.fileName.contains(query.trim(), ignoreCase = true))
     }
 
-    Scaffold(
-        topBar = {
-            Column {
-                TopAppBar(
-                    title = {
-                        Text(
-                            text = "Fetchly",
-                            style = MaterialTheme.typography.headlineMedium,
-                        )
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            ModalDrawerSheet {
+                DrawerContent(
+                    categoryCounts = categoryCounts,
+                    selectedCategory = selectedCategory,
+                    onSelectCategory = { category ->
+                        selectedCategoryOrdinal = category.ordinal
+                        coroutineScope.launch { drawerState.close() }
                     },
-                    actions = {
-                        IconButton(
-                            onClick = {
-                                searching = !searching
-                                if (!searching) query = ""
-                            },
-                        ) {
-                            Icon(
-                                imageVector = if (searching) Icons.Filled.Close else Icons.Filled.Search,
-                                contentDescription = if (searching) "Close search" else "Search",
+                    downloadsPath = viewModel.downloadsPath,
+                    maxConcurrent = viewModel.maxConcurrentDownloads.collectAsState().value,
+                    onMaxConcurrentChange = viewModel::setMaxConcurrentDownloads,
+                    connectionsPerDownload = viewModel.connectionsPerDownload.collectAsState().value,
+                    onConnectionsChange = viewModel::setConnectionsPerDownload,
+                )
+            }
+        },
+    ) {
+        Scaffold(
+            topBar = {
+                Column {
+                    TopAppBar(
+                        navigationIcon = {
+                            IconButton(onClick = { coroutineScope.launch { drawerState.open() } }) {
+                                Icon(Icons.Filled.Menu, contentDescription = "Menu")
+                            }
+                        },
+                        title = {
+                            Text(
+                                text = "Fetchly",
+                                style = MaterialTheme.typography.headlineMedium,
+                            )
+                        },
+                        actions = {
+                            IconButton(
+                                onClick = {
+                                    searching = !searching
+                                    if (!searching) query = ""
+                                },
+                            ) {
+                                Icon(
+                                    imageVector = if (searching) Icons.Filled.Close else Icons.Filled.Search,
+                                    contentDescription = if (searching) "Close search" else "Search",
+                                )
+                            }
+                        },
+                    )
+                    if (searching) {
+                        OutlinedTextField(
+                            value = query,
+                            onValueChange = { query = it },
+                            singleLine = true,
+                            placeholder = { Text("Search downloads") },
+                            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 4.dp),
+                        )
+                    }
+                    ScrollableTabRow(selectedTabIndex = selectedTab) {
+                        tabs.forEachIndexed { index, tab ->
+                            Tab(
+                                selected = selectedTab == index,
+                                onClick = { selectedTab = index },
+                                text = { Text("${tab.label} (${counts[index]})") },
                             )
                         }
-                    },
-                )
-                if (searching) {
-                    OutlinedTextField(
-                        value = query,
-                        onValueChange = { query = it },
-                        singleLine = true,
-                        placeholder = { Text("Search downloads") },
-                        leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 4.dp),
-                    )
+                    }
                 }
-                ScrollableTabRow(selectedTabIndex = selectedTab) {
-                    tabs.forEachIndexed { index, tab ->
-                        Tab(
-                            selected = selectedTab == index,
-                            onClick = { selectedTab = index },
-                            text = { Text("${tab.label} (${counts[index]})") },
+            },
+            floatingActionButton = {
+                FloatingActionButton(onClick = { showAddSheet = true }) {
+                    Icon(Icons.Filled.Add, contentDescription = "New download")
+                }
+            },
+        ) { padding ->
+            LazyColumn(
+                modifier = Modifier.fillMaxSize().padding(padding),
+                contentPadding = PaddingValues(
+                    start = 16.dp,
+                    end = 16.dp,
+                    top = 12.dp,
+                    // Leaves room so the last card isn't hidden behind the New download button.
+                    bottom = 96.dp,
+                ),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                if (visible.isEmpty()) {
+                    item {
+                        EmptyState(
+                            message = emptyMessage(
+                                tab = tabs[selectedTab],
+                                category = selectedCategory,
+                                isSearch = query.isNotBlank(),
+                            ),
+                        )
+                    }
+                } else {
+                    items(visible, key = { it.id }) { download ->
+                        DownloadCard(
+                            download = download,
+                            speed = state.speeds[download.id] ?: 0L,
+                            onPause = { viewModel.pause(download.id) },
+                            onResume = { viewModel.resume(download.id) },
+                            onDelete = { viewModel.delete(download.id) },
                         )
                     }
                 }
             }
-        },
-        floatingActionButton = {
-            FloatingActionButton(onClick = { showAddSheet = true }) {
-                Icon(Icons.Filled.Add, contentDescription = "New download")
-            }
-        },
-    ) { padding ->
-        LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(padding),
-            contentPadding = PaddingValues(
-                start = 16.dp,
-                end = 16.dp,
-                top = 12.dp,
-                // Leaves room so the last card isn't hidden behind the New download button.
-                bottom = 96.dp,
-            ),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            if (visible.isEmpty()) {
-                item {
-                    EmptyState(
-                        message = emptyMessage(
-                            tab = tabs[selectedTab],
-                            isSearch = query.isNotBlank(),
-                        ),
-                    )
-                }
-            } else {
-                items(visible, key = { it.id }) { download ->
-                    DownloadCard(
-                        download = download,
-                        speed = state.speeds[download.id] ?: 0L,
-                        onPause = { viewModel.pause(download.id) },
-                        onResume = { viewModel.resume(download.id) },
-                        onDelete = { viewModel.delete(download.id) },
-                    )
-                }
-            }
+        }
+
+        if (showAddSheet) {
+            AddUrlSheet(
+                onDismiss = { showAddSheet = false },
+                onAdd = { url ->
+                    viewModel.addDownload(url)
+                    showAddSheet = false
+                },
+            )
         }
     }
+}
 
-    if (showAddSheet) {
-        AddUrlSheet(
-            onDismiss = { showAddSheet = false },
-            onAdd = { url ->
-                viewModel.addDownload(url)
-                showAddSheet = false
-            },
+@Composable
+private fun DrawerContent(
+    categoryCounts: Map<FileCategory, Int>,
+    selectedCategory: FileCategory,
+    onSelectCategory: (FileCategory) -> Unit,
+    downloadsPath: String,
+    maxConcurrent: Int,
+    onMaxConcurrentChange: (Int) -> Unit,
+    connectionsPerDownload: Int,
+    onConnectionsChange: (Int) -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .verticalScroll(rememberScrollState())
+            .padding(vertical = 8.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Download,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(28.dp),
+            )
+            Spacer(Modifier.width(12.dp))
+            Text(text = "Fetchly", style = MaterialTheme.typography.headlineSmall)
+        }
+        HorizontalDivider()
+
+        DrawerSectionLabel("Types")
+        FileCategory.entries.forEach { category ->
+            NavigationDrawerItem(
+                label = { Text(categoryLabel(category, categoryCounts[category] ?: 0)) },
+                icon = { Icon(categoryIcon(category), contentDescription = null) },
+                selected = category == selectedCategory,
+                onClick = { onSelectCategory(category) },
+                modifier = Modifier.padding(horizontal = 12.dp),
+            )
+        }
+
+        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+        DrawerSectionLabel("Settings")
+
+        Row(
+            modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.Top,
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Folder,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp),
+            )
+            Spacer(Modifier.width(16.dp))
+            Column {
+                Text(
+                    text = "Download location",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    text = downloadsPath,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+            }
+        }
+
+        SettingSlider(
+            label = "Max concurrent downloads",
+            value = maxConcurrent,
+            onValueChange = onMaxConcurrentChange,
+            range = SettingsStore.MIN_CONCURRENT..SettingsStore.MAX_CONCURRENT,
+        )
+        SettingSlider(
+            label = "Connections per download",
+            value = connectionsPerDownload,
+            onValueChange = onConnectionsChange,
+            range = SettingsStore.MIN_CONNECTIONS..SettingsStore.MAX_CONNECTIONS,
         )
     }
+}
+
+@Composable
+private fun DrawerSectionLabel(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+    )
+}
+
+@Composable
+private fun SettingSlider(
+    label: String,
+    value: Int,
+    onValueChange: (Int) -> Unit,
+    range: IntRange,
+) {
+    Column(modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp)) {
+        Text(
+            text = "$label: $value",
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        Slider(
+            value = value.toFloat(),
+            onValueChange = { onValueChange(it.roundToInt()) },
+            valueRange = range.first.toFloat()..range.last.toFloat(),
+            steps = (range.last - range.first - 1).coerceAtLeast(0),
+        )
+    }
+}
+
+private fun categoryLabel(category: FileCategory, count: Int): String =
+    if (count > 0) "${category.label} ($count)" else category.label
+
+private fun categoryIcon(category: FileCategory): ImageVector = when (category) {
+    FileCategory.EVERYTHING -> Icons.Filled.Apps
+    FileCategory.COMPRESSED -> Icons.Filled.Archive
+    FileCategory.DOCUMENTS -> Icons.Filled.Description
+    FileCategory.MUSIC -> Icons.Filled.MusicNote
+    FileCategory.VIDEOS -> Icons.Filled.Movie
+    FileCategory.SUBTITLES -> Icons.Filled.ClosedCaption
+    FileCategory.PHOTOS -> Icons.Filled.Image
+    FileCategory.PROGRAMS -> Icons.Filled.Android
+    FileCategory.OTHERS -> Icons.Filled.HelpOutline
 }
 
 @Composable
@@ -472,8 +668,9 @@ private fun statusIcon(status: DownloadStatus): ImageVector = when (status) {
     DownloadStatus.FAILED -> Icons.Filled.Warning
 }
 
-private fun emptyMessage(tab: DownloadTab, isSearch: Boolean): String = when {
+private fun emptyMessage(tab: DownloadTab, category: FileCategory, isSearch: Boolean): String = when {
     isSearch -> "No downloads match your search."
+    category != FileCategory.EVERYTHING -> "No ${category.label.lowercase()} here yet."
     else -> when (tab) {
         DownloadTab.ALL -> "No downloads yet. Tap + to add one."
         DownloadTab.RUNNING -> "Nothing is downloading right now."

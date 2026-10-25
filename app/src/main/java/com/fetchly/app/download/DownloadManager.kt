@@ -3,14 +3,16 @@ package com.fetchly.app.download
 import com.fetchly.app.data.DownloadDao
 import com.fetchly.app.data.DownloadEntity
 import com.fetchly.app.data.DownloadStatus
+import com.fetchly.app.data.SettingsStore
 import java.io.File
 import java.net.URLDecoder
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.Semaphore
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
@@ -24,9 +26,15 @@ class DownloadManager(
     private val runner: DownloadRunner,
     private val scope: CoroutineScope,
     private val downloadsDir: File,
+    private val settings: SettingsStore,
 ) {
 
-    private val slots = Semaphore(MAX_CONCURRENT)
+    /**
+     * How many downloads are running right now. A plain counter rather than kotlinx.coroutines'
+     * Semaphore, because its permit count can't be changed once created, and the concurrency
+     * limit here can change live from Settings.
+     */
+    private val activeCount = AtomicInteger(0)
     private val jobs = ConcurrentHashMap<Long, Job>()
 
     fun observeDownloads(): Flow<List<DownloadEntity>> = dao.observeDownloads()
@@ -47,7 +55,7 @@ class DownloadManager(
                 acceptsRanges = false,
                 etag = null,
                 lastModified = null,
-                connections = DEFAULT_CONNECTIONS,
+                connections = settings.connectionsPerDownload.value,
                 errorMessage = null,
                 createdAt = now,
                 updatedAt = now,
@@ -96,16 +104,29 @@ class DownloadManager(
         // Create the job lazily so it's in the map before it starts. Otherwise a fast job could
         // finish before the map entry is added, and the stale entry would block future runs.
         val job = scope.launch(start = CoroutineStart.LAZY) {
-            slots.acquire()
+            acquireSlot()
             try {
                 runner.run(id)
             } finally {
-                slots.release()
+                activeCount.decrementAndGet()
             }
         }
         jobs[id] = job
         job.invokeOnCompletion { jobs.remove(id, job) }
         job.start()
+    }
+
+    /** Waits until fewer downloads are running than the current limit, then claims a slot. */
+    private suspend fun acquireSlot() {
+        while (true) {
+            val limit = settings.maxConcurrentDownloads.value
+            val claimed = activeCount.incrementAndGet()
+            if (claimed <= limit) return
+            // Someone else filled the last slot first, or the limit just dropped. Give it back
+            // and wait before trying again.
+            activeCount.decrementAndGet()
+            delay(SLOT_POLL_MS)
+        }
     }
 
     private fun uniqueFile(name: String): File {
@@ -130,7 +151,6 @@ class DownloadManager(
     }
 
     companion object {
-        const val MAX_CONCURRENT = 3
-        const val DEFAULT_CONNECTIONS = 4
+        private const val SLOT_POLL_MS = 300L
     }
 }

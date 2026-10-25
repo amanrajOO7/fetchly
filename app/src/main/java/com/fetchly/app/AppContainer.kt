@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Environment
 import androidx.room.Room
 import com.fetchly.app.data.FetchlyDatabase
+import com.fetchly.app.data.SettingsStore
 import com.fetchly.app.download.DownloadManager
 import com.fetchly.app.download.DownloadRunner
 import java.io.File
@@ -34,10 +35,16 @@ class AppContainer(context: Context) {
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
+    val settings: SettingsStore = SettingsStore(context)
+
     val downloads: DownloadManager = DownloadManager(
         dao = database.downloadDao(),
         runner = DownloadRunner(database.downloadDao(), client),
         scope = appScope,
         downloadsDir = downloadsDir,
+        settings = settings,
     )
+
+    /** The folder downloads are written to. Shown read-only in Settings. */
+    val downloadsPath: String = downloadsDir.path
 }

@@ -30,6 +30,13 @@ class DownloadsViewModel(application: Application) : AndroidViewModel(applicatio
         .map { list -> DownloadsState(downloads = list, speeds = measureSpeeds(list)) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DownloadsState())
 
+    val maxConcurrentDownloads: StateFlow<Int> = container.settings.maxConcurrentDownloads
+    val connectionsPerDownload: StateFlow<Int> = container.settings.connectionsPerDownload
+    val downloadsPath: String = container.downloadsPath
+
+    fun setMaxConcurrentDownloads(value: Int) = container.settings.setMaxConcurrentDownloads(value)
+    fun setConnectionsPerDownload(value: Int) = container.settings.setConnectionsPerDownload(value)
+
     fun addDownload(url: String) {
         viewModelScope.launch {
             container.downloads.add(url)
