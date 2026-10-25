@@ -60,10 +60,9 @@ fun FetchlyScreen(viewModel: DownloadsViewModel = viewModel()) {
     Scaffold(
         topBar = { TopAppBar(title = { Text("Fetchly") }) },
         floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = { showAddSheet = true },
-                text = { Text("Add download") },
-            )
+            ExtendedFloatingActionButton(onClick = { showAddSheet = true }) {
+                Text("Add download")
+            }
         },
     ) { padding ->
         if (downloads.isEmpty()) {
