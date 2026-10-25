@@ -6,11 +6,8 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 
 /**
- * The typeface for the whole app. FontFamily.Default is the phone's system font.
- *
- * To use a different typeface, add its .ttf files to app/src/main/res/font and build the family
- * here, for example:
- *   FontFamily(Font(R.font.my_font_regular), Font(R.font.my_font_medium, FontWeight.Medium))
+ * The typeface for the whole app: the device's system font family (Roboto on most phones, or
+ * the manufacturer's own font where one is set). Every style in [FetchlyTypography] uses this.
  */
 val AppFont: FontFamily = FontFamily.Default
 

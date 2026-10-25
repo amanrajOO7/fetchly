@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!--
+        Glyph only, no background. Android 13+ uses this layer for themed (monochrome) icons,
+        tinting it to match the device's wallpaper palette, so it must stay a single solid shape.
+    -->
+    <group
+        android:pivotX="12"
+        android:pivotY="12"
+        android:scaleX="2.2"
+        android:scaleY="2.2"
+        android:translateX="42"
+        android:translateY="42">
+        <path
+            android:fillColor="#FF000000"
+            android:pathData="M19,9h-4V3H9v6H5l7,7l7,-7zM5,18v2h14v-2H5z" />
+    </group>
+</vector>
