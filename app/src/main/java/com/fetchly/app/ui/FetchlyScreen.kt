@@ -22,31 +22,31 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.LargeTopAppBar
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -58,22 +58,41 @@ import com.fetchly.app.data.DownloadEntity
 import com.fetchly.app.data.DownloadStatus
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
+/** The filter tabs across the top of the list. Each tab says which statuses it shows. */
+private enum class DownloadTab(val label: String, val matches: (DownloadStatus) -> Boolean) {
+    ALL("All", { true }),
+    RUNNING("Running", { it == DownloadStatus.DOWNLOADING || it == DownloadStatus.QUEUED }),
+    COMPLETED("Completed", { it == DownloadStatus.COMPLETED }),
+    ERROR("Error", { it == DownloadStatus.FAILED }),
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FetchlyScreen(viewModel: DownloadsViewModel = viewModel()) {
-    val downloads by viewModel.downloads.collectAsState()
+    val state by viewModel.state.collectAsState()
     var showAddSheet by rememberSaveable { mutableStateOf(false) }
-    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    var selectedTab by rememberSaveable { mutableIntStateOf(0) }
 
     RequestNotificationPermission()
 
+    val tabs = DownloadTab.entries
+    val counts = tabs.map { tab -> state.downloads.count { tab.matches(it.status) } }
+    val visible = state.downloads.filter { tabs[selectedTab].matches(it.status) }
+
     Scaffold(
-        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
-            LargeTopAppBar(
-                title = { Text("Fetchly") },
-                scrollBehavior = scrollBehavior,
-            )
+            Column {
+                TopAppBar(title = { Text("Fetchly") })
+                ScrollableTabRow(selectedTabIndex = selectedTab) {
+                    tabs.forEachIndexed { index, tab ->
+                        Tab(
+                            selected = selectedTab == index,
+                            onClick = { selectedTab = index },
+                            text = { Text("${tab.label} (${counts[index]})") },
+                        )
+                    }
+                }
+            }
         },
         floatingActionButton = {
             ExtendedFloatingActionButton(onClick = { showAddSheet = true }) {
@@ -81,24 +100,27 @@ fun FetchlyScreen(viewModel: DownloadsViewModel = viewModel()) {
             }
         },
     ) { padding ->
-        if (downloads.isEmpty()) {
-            EmptyState(modifier = Modifier.padding(padding))
+        if (visible.isEmpty()) {
+            EmptyState(
+                message = emptyMessage(tabs[selectedTab]),
+                modifier = Modifier.padding(padding),
+            )
         } else {
             LazyColumn(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().padding(padding),
                 contentPadding = PaddingValues(
                     start = 16.dp,
                     end = 16.dp,
-                    top = padding.calculateTopPadding() + 8.dp,
-                    // Leave room under the list so the last card isn't hidden behind the button.
-                    bottom = padding.calculateBottomPadding() + 96.dp,
+                    top = 12.dp,
+                    // Leaves room so the last card isn't hidden behind the New download button.
+                    bottom = 96.dp,
                 ),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                item { SummaryCard(downloads) }
-                items(downloads, key = { it.id }) { download ->
+                items(visible, key = { it.id }) { download ->
                     DownloadCard(
                         download = download,
+                        speed = state.speeds[download.id] ?: 0L,
                         onPause = { viewModel.pause(download.id) },
                         onResume = { viewModel.resume(download.id) },
                         onDelete = { viewModel.delete(download.id) },
@@ -120,21 +142,15 @@ fun FetchlyScreen(viewModel: DownloadsViewModel = viewModel()) {
 }
 
 @Composable
-private fun EmptyState(modifier: Modifier = Modifier) {
+private fun EmptyState(message: String, modifier: Modifier = Modifier) {
     Column(
         modifier = modifier.fillMaxSize().padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
         Text(
-            text = "Nothing downloading",
-            style = MaterialTheme.typography.headlineSmall,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-        Spacer(Modifier.height(8.dp))
-        Text(
-            text = "Tap New download and paste a link to start.",
-            style = MaterialTheme.typography.bodyMedium,
+            text = message,
+            style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
         )
@@ -142,39 +158,9 @@ private fun EmptyState(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun SummaryCard(downloads: List<DownloadEntity>) {
-    val active = downloads.count {
-        it.status == DownloadStatus.DOWNLOADING || it.status == DownloadStatus.QUEUED
-    }
-    val completed = downloads.count { it.status == DownloadStatus.COMPLETED }
-
-    ElevatedCard(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.elevatedCardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer,
-        ),
-    ) {
-        Column(
-            modifier = Modifier.padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Text(
-                text = "$active active",
-                style = MaterialTheme.typography.headlineSmall,
-                color = MaterialTheme.colorScheme.onPrimaryContainer,
-            )
-            Text(
-                text = "$completed completed",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onPrimaryContainer,
-            )
-        }
-    }
-}
-
-@Composable
 private fun DownloadCard(
     download: DownloadEntity,
+    speed: Long,
     onPause: () -> Unit,
     onResume: () -> Unit,
     onDelete: () -> Unit,
@@ -186,6 +172,7 @@ private fun DownloadCard(
     } else {
         null
     }
+    val isTransferring = download.status == DownloadStatus.DOWNLOADING
 
     ElevatedCard(modifier = Modifier.fillMaxWidth()) {
         Column(
@@ -220,21 +207,33 @@ private fun DownloadCard(
                     progress = { fraction },
                     modifier = Modifier.fillMaxWidth(),
                 )
-            } else if (download.status == DownloadStatus.DOWNLOADING) {
+            } else if (isTransferring) {
                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
             }
 
-            val done = Formatter.formatShortFileSize(context, download.downloadedBytes)
-            val sizeLine = if (total != null) {
-                "$done of ${Formatter.formatShortFileSize(context, total)}"
-            } else {
-                done
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                val done = Formatter.formatShortFileSize(context, download.downloadedBytes)
+                val sizeLine = if (total != null) {
+                    "$done of ${Formatter.formatShortFileSize(context, total)}"
+                } else {
+                    done
+                }
+                Text(
+                    text = sizeLine,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (isTransferring) {
+                    Text(
+                        text = "${Formatter.formatShortFileSize(context, speed)}/s",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
             }
-            Text(
-                text = sizeLine,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
 
             if (download.status == DownloadStatus.FAILED) {
                 download.errorMessage?.let { message ->
@@ -337,6 +336,13 @@ private fun AddUrlSheet(onDismiss: () -> Unit, onAdd: (String) -> Unit) {
             }
         }
     }
+}
+
+private fun emptyMessage(tab: DownloadTab): String = when (tab) {
+    DownloadTab.ALL -> "No downloads yet. Tap New download to start."
+    DownloadTab.RUNNING -> "Nothing is downloading right now."
+    DownloadTab.COMPLETED -> "Finished downloads appear here."
+    DownloadTab.ERROR -> "No failed downloads."
 }
 
 private fun hostOf(download: DownloadEntity): String =
