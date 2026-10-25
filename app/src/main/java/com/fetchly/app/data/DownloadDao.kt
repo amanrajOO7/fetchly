@@ -38,6 +38,15 @@ interface DownloadDao {
     )
     suspend fun updateSegmentProgress(downloadId: Long, segmentIndex: Int, downloaded: Long)
 
+    @Query("UPDATE downloads SET status = :status, errorMessage = :error, updatedAt = :now WHERE id = :id")
+    suspend fun updateStatus(id: Long, status: DownloadStatus, error: String?, now: Long)
+
+    @Query("UPDATE downloads SET downloadedBytes = :bytes, updatedAt = :now WHERE id = :id")
+    suspend fun updateProgress(id: Long, bytes: Long, now: Long)
+
+    @Query("DELETE FROM segments WHERE downloadId = :downloadId")
+    suspend fun deleteSegments(downloadId: Long)
+
     @Query("DELETE FROM downloads WHERE id = :id")
     suspend fun deleteDownload(id: Long)
 }
