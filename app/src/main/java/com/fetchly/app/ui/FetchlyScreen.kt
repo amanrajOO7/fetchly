@@ -35,7 +35,6 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
@@ -167,9 +166,6 @@ fun FetchlyScreen(viewModel: DownloadsViewModel = viewModel()) {
             ),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            item {
-                StatsRow(downloads = state.downloads, speeds = state.speeds)
-            }
             if (visible.isEmpty()) {
                 item {
                     EmptyState(
@@ -201,73 +197,6 @@ fun FetchlyScreen(viewModel: DownloadsViewModel = viewModel()) {
                 showAddSheet = false
             },
         )
-    }
-}
-
-@Composable
-private fun StatsRow(downloads: List<DownloadEntity>, speeds: Map<Long, Long>) {
-    val context = LocalContext.current
-    val scheme = MaterialTheme.colorScheme
-    val totalSpeed = speeds.values.sum()
-    val active = downloads.count {
-        it.status == DownloadStatus.DOWNLOADING || it.status == DownloadStatus.QUEUED
-    }
-    val completed = downloads.count { it.status == DownloadStatus.COMPLETED }
-
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        StatCard(
-            label = "Speed",
-            value = "${Formatter.formatShortFileSize(context, totalSpeed)}/s",
-            containerColor = scheme.primaryContainer,
-            contentColor = scheme.onPrimaryContainer,
-            modifier = Modifier.weight(1f),
-        )
-        StatCard(
-            label = "Active",
-            value = active.toString(),
-            containerColor = scheme.secondaryContainer,
-            contentColor = scheme.onSecondaryContainer,
-            modifier = Modifier.weight(1f),
-        )
-        StatCard(
-            label = "Done",
-            value = completed.toString(),
-            containerColor = scheme.tertiaryContainer,
-            contentColor = scheme.onTertiaryContainer,
-            modifier = Modifier.weight(1f),
-        )
-    }
-}
-
-@Composable
-private fun StatCard(
-    label: String,
-    value: String,
-    containerColor: Color,
-    contentColor: Color,
-    modifier: Modifier = Modifier,
-) {
-    ElevatedCard(
-        modifier = modifier,
-        colors = CardDefaults.elevatedCardColors(containerColor = containerColor),
-    ) {
-        Column(modifier = Modifier.padding(14.dp)) {
-            Text(
-                text = value,
-                style = MaterialTheme.typography.titleLarge,
-                color = contentColor,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelMedium,
-                color = contentColor,
-            )
-        }
     }
 }
 
