@@ -52,6 +52,12 @@ android {
     buildFeatures {
         compose = true
     }
+
+    lint {
+        // This detector crashes lint on Kotlin 2.0 sources with the AGP version used here.
+        // The crash is in lint itself, not in this code. Re-enable once AGP is upgraded.
+        disable += "NullSafeMutableLiveData"
+    }
 }
 
 dependencies {
