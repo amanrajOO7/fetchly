@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Compose sets the actual theme; this only provides the window background before first frame. -->
+    <style name="Theme.Fetchly" parent="android:Theme.Material.Light.NoActionBar" />
+</resources>
