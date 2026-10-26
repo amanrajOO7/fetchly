@@ -39,10 +39,17 @@ class DownloadManager(
 
     fun observeDownloads(): Flow<List<DownloadEntity>> = dao.observeDownloads()
 
-    /** Creates a queued download for [url] and starts it. Returns the new download's id. */
-    suspend fun add(url: String): Long {
+    /**
+     * Creates a queued download for [url] and starts it. Returns the new download's id.
+     *
+     * @param suggestedFileName an externally supplied name to try first (for example, guessed
+     *   from a scanned page's link text). It is sanitized the same as a name derived from the
+     *   URL, since it may come from untrusted page content.
+     */
+    suspend fun add(url: String, suggestedFileName: String? = null): Long {
         val now = System.currentTimeMillis()
-        val target = uniqueFile(fileNameFor(url))
+        val rawName = suggestedFileName?.takeIf { it.isNotBlank() } ?: fileNameFor(url)
+        val target = uniqueFile(pathSafe(rawName))
         val id = dao.insertDownload(
             DownloadEntity(
                 url = url,
@@ -146,8 +153,15 @@ class DownloadManager(
     private fun fileNameFor(url: String): String {
         val segment = url.toHttpUrlOrNull()?.pathSegments?.lastOrNull()
             ?.takeIf { it.isNotBlank() }
-            ?.let { URLDecoder.decode(it, Charsets.UTF_8.name()) }
-        return (segment ?: "download").replace(Regex("[\\\\/:*?\"<>|]"), "_")
+            ?.let { runCatching { URLDecoder.decode(it, Charsets.UTF_8.name()) }.getOrNull() }
+        return segment ?: "download"
+    }
+
+    /** Strips characters that aren't safe in a single path segment, since this may come from
+     *  content the server or a scanned page supplied, not just from our own URL parsing. */
+    private fun pathSafe(name: String): String {
+        val cleaned = name.replace(Regex("[\\\\/:*?\"<>|]"), "_").trim()
+        return cleaned.ifBlank { "download" }
     }
 
     companion object {

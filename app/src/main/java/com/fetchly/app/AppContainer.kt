@@ -23,7 +23,9 @@ class AppContainer(context: Context) {
         FetchlyDatabase.NAME,
     ).build()
 
-    private val client: OkHttpClient = OkHttpClient.Builder()
+    /** Shared by the download engine and the link grabber. No CookieJar is configured, so
+     *  nothing is persisted between requests. */
+    val client: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         // Read timeout catches stalled connections. Without it a dead connection can hang forever.
         .readTimeout(30, TimeUnit.SECONDS)

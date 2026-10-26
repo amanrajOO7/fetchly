@@ -26,21 +26,13 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Android
-import androidx.compose.material.icons.filled.Apps
-import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.ClosedCaption
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.HelpOutline
-import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.MusicNote
-import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Schedule
@@ -111,7 +103,10 @@ private enum class DownloadTab(val label: String, val matches: (DownloadStatus) 
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun FetchlyScreen(viewModel: DownloadsViewModel = viewModel()) {
+fun FetchlyScreen(
+    viewModel: DownloadsViewModel = viewModel(),
+    onOpenLinkGrabber: () -> Unit = {},
+) {
     val state by viewModel.state.collectAsState()
     var showAddSheet by rememberSaveable { mutableStateOf(false) }
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
@@ -149,6 +144,10 @@ fun FetchlyScreen(viewModel: DownloadsViewModel = viewModel()) {
                     onSelectCategory = { category ->
                         selectedCategoryOrdinal = category.ordinal
                         coroutineScope.launch { drawerState.close() }
+                    },
+                    onOpenLinkGrabber = {
+                        coroutineScope.launch { drawerState.close() }
+                        onOpenLinkGrabber()
                     },
                     downloadsPath = viewModel.downloadsPath,
                     maxConcurrent = viewModel.maxConcurrentDownloads.collectAsState().value,
@@ -269,6 +268,7 @@ private fun DrawerContent(
     categoryCounts: Map<FileCategory, Int>,
     selectedCategory: FileCategory,
     onSelectCategory: (FileCategory) -> Unit,
+    onOpenLinkGrabber: () -> Unit,
     downloadsPath: String,
     maxConcurrent: Int,
     onMaxConcurrentChange: (Int) -> Unit,
@@ -293,6 +293,15 @@ private fun DrawerContent(
             Spacer(Modifier.width(12.dp))
             Text(text = "Fetchly", style = MaterialTheme.typography.headlineSmall)
         }
+        HorizontalDivider()
+
+        NavigationDrawerItem(
+            label = { Text("Link grabber") },
+            icon = { Icon(Icons.Filled.Link, contentDescription = null) },
+            selected = false,
+            onClick = onOpenLinkGrabber,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+        )
         HorizontalDivider()
 
         DrawerSectionLabel("Types")
@@ -383,18 +392,6 @@ private fun SettingSlider(
 
 private fun categoryLabel(category: FileCategory, count: Int): String =
     if (count > 0) "${category.label} ($count)" else category.label
-
-private fun categoryIcon(category: FileCategory): ImageVector = when (category) {
-    FileCategory.EVERYTHING -> Icons.Filled.Apps
-    FileCategory.COMPRESSED -> Icons.Filled.Archive
-    FileCategory.DOCUMENTS -> Icons.Filled.Description
-    FileCategory.MUSIC -> Icons.Filled.MusicNote
-    FileCategory.VIDEOS -> Icons.Filled.Movie
-    FileCategory.SUBTITLES -> Icons.Filled.ClosedCaption
-    FileCategory.PHOTOS -> Icons.Filled.Image
-    FileCategory.PROGRAMS -> Icons.Filled.Android
-    FileCategory.OTHERS -> Icons.Filled.HelpOutline
-}
 
 @Composable
 private fun EmptyState(message: String) {
